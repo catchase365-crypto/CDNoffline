@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML 纯离线 CDN 补全工具</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #080c14;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #f1f5f9;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    /* 规范静态流体毛玻璃背景 */
+    .fluid-bg {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      z-index: -1;
+      pointer-events: none;
+      background: radial-gradient(circle at center, #0f172a 0%, #080c14 100%);
+    }
+
+    .fluid-ball {
+      position: absolute;
+      border-radius: 50%;
+      mix-blend-mode: screen;
+      filter: blur(85px);
+      opacity: 0.4;
+    }
+
+    .b-emerald {
+      top: -10vw;
+      left: -10vw;
+      width: max(45vw, 45vh);
+      height: max(45vw, 45vh);
+      background: #10b981;
+    }
+
+    .b-violet {
+      top: -8vw;
+      right: -8vw;
+      width: max(50vw, 50vh);
+      height: max(50vw, 50vh);
+      background: #8b5cf6;
+    }
+
+    .b-seablue {
+      bottom: -10vw;
+      left: -10vw;
+      width: max(48vw, 48vh);
+      height: max(48vw, 48vh);
+      background: #0284c7;
+    }
+
+    .b-magenta {
+      bottom: -10vw;
+      right: -10vw;
+      width: max(46vw, 46vh);
+      height: max(46vw, 46vh);
+      background: #ec4899;
+    }
+
+    .b-orange {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: max(38vw, 38vh);
+      height: max(38vw, 38vh);
+      background: #f59e0b;
+      opacity: 0.3;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 580px;
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 22px;
+      padding: 28px 22px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #38bdf8;
+      margin-bottom: 6px;
+    }
+
+    .header p {
+      font-size: 0.84rem;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+
+    /* 原生文件透明覆盖层，解决 about:blank 无法调起文件选择器问题 */
+    .dropzone {
+      position: relative;
+      border: 2px dashed rgba(56, 189, 248, 0.4);
+      border-radius: 14px;
+      padding: 36px 16px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.03);
+      transition: all 0.2s ease;
+      overflow: hidden;
+    }
+
+    .dropzone:hover, .dropzone.dragover {
+      border-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .dropzone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    .dropzone p {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #e2e8f0;
+    }
+
+    .dropzone span {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 6px;
+      display: block;
+    }
+
+    .paste-bar {
+      display: flex;
+      gap: 10px;
+    }
+
+    .status-panel {
+      display: none;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+
+    .status-panel.info {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #7dd3fc;
+    }
+
+    .status-panel.success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+    }
+
+    .status-panel.warning {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+    }
+
+    .status-list {
+      margin-top: 8px;
+      font-size: 0.76rem;
+      word-break: break-all;
+      list-style-type: square;
+      padding-left: 18px;
+    }
+
+    .btn-group {
+      display: none;
+      gap: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      padding: 11px 12px;
+      border-radius: 10px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+
+    .btn.primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 30px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      font-size: 0.84rem;
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 1000;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="fluid-bg">
+    <div class="fluid-ball b-emerald"></div>
+    <div class="fluid-ball b-violet"></div>
+    <div class="fluid-ball b-seablue"></div>
+    <div class="fluid-ball b-magenta"></div>
+    <div class="fluid-ball b-orange"></div>
+  </div>
+
+  <div class="container">
+    <div class="header">
+      <h1>HTML 纯离线 CDN 补全工具</h1>
+      <p>自动检测外部 CDN 依赖并在线拉取源码内嵌打包，后台静默合成单文件。</p>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".html,.htm,text/html">
+      <p>📂 点击此处选择 HTML 文件</p>
+      <span>支持拖拽文件至此，需在有网环境下运行以拉取 CDN</span>
+    </div>
+
+    <div class="paste-bar">
+      <button class="btn" id="btnPaste">📋 或直接粘贴剪贴板里的 HTML 代码进行检测</button>
+    </div>
+
+    <div class="status-panel" id="statusPanel"></div>
+
+    <div class="btn-group" id="btnGroup">
+      <button class="btn" id="btnCopy">📋 一键复制完整代码</button>
+      <button class="btn primary" id="btnDownload">💾 下载离线版 HTML</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const btnPaste = document.getElementById('btnPaste');
+    const statusPanel = document.getElementById('statusPanel');
+    const btnGroup = document.getElementById('btnGroup');
+    const btnCopy = document.getElementById('btnCopy');
+    const btnDownload = document.getElementById('btnDownload');
+    const toast = document.getElementById('toast');
+
+    let processedHtml = '';
+    let currentFileName = 'offline_bundle.html';
+
+    // 动态拼装标签名，彻底杜绝任何浏览器或预览器误判闭合标签
+    const TAG_S = 'scr' + 'ipt';
+    const TAG_ST = 'sty' + 'le';
+    const OPEN_S = '<' + TAG_S + '>';
+    const CLOSE_S = '<' + '/' + TAG_S + '>';
+    const SAFE_CLOSE_S = '<' + '\\/' + TAG_S + '>';
+    const OPEN_ST = '<' + TAG_ST + '>';
+    const CLOSE_ST = '<' + '/' + TAG_ST + '>';
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(function() {
+        toast.classList.remove('show');
+      }, 2200);
+    }
+
+    function setStatus(type, msg, list) {
+      list = list || [];
+      statusPanel.className = 'status-panel ' + type;
+      statusPanel.style.display = 'block';
+      let html = '<div>' + msg + '</div>';
+      if (list.length > 0) {
+        html += '<ul class="status-list">' + list.map(function(item) {
+          return '<li>' + item + '</li>';
+        }).join('') + '</ul>';
+      }
+      statusPanel.innerHTML = html;
+    }
+
+    dropzone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', function() {
+      dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', function(e) {
+      if (e.target.files && e.target.files[0]) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    btnPaste.addEventListener('click', async function() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text || !text.includes('<')) {
+          showToast('剪贴板中没有检测到有效的 HTML 代码');
+          return;
+        }
+        currentFileName = 'pasted_offline.html';
+        processHtml(text);
+      } catch (err) {
+        showToast('无法读取剪贴板，请直接点击上方虚线框选择文件');
+      }
+    });
+
+    window.addEventListener('paste', function(e) {
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      if (text && text.includes('<')) {
+        currentFileName = 'pasted_offline.html';
+        processHtml(text);
+      }
+    });
+
+    function handleFile(file) {
+      currentFileName = file.name.replace(/\.(html|htm)$/i, '') + '_offline.html';
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        processHtml(e.target.result);
+      };
+      reader.readAsText(file);
+      fileInput.value = '';
+    }
+
+    async function processHtml(rawHtml) {
+      btnGroup.style.display = 'none';
+      processedHtml = '';
+
+      // 使用 RegExp 构造函数动态生成正则，不在源码里暴露闭合字面量
+      const sPattern = '<' + TAG_S + '\\b[^>]*?\\bsrc\\s*=\\s*["\']((?:https?:)?\\/\\/[^"\']+)["\'][^>]*>(?:\\s*<\\/' + TAG_S + '>)?';
+      const sRegex = new RegExp(sPattern, 'gi');
+
+      const lPattern = '<link\\b[^>]*?\\bhref\\s*=\\s*["\']((?:https?:)?\\/\\/[^"\']+)["\'][^>]*>';
+      const lRegex = new RegExp(lPattern, 'gi');
+
+      const sMatches = [];
+      let m;
+      while ((m = sRegex.exec(rawHtml)) !== null) {
+        sMatches.push({ full: m[0], url: m[1] });
+      }
+
+      const lMatches = [];
+      while ((m = lRegex.exec(rawHtml)) !== null) {
+        if (/rel\s*=\s*["']?stylesheet["']?/i.test(m[0])) {
+          lMatches.push({ full: m[0], url: m[1] });
+        }
+      }
+
+      if (sMatches.length === 0 && lMatches.length === 0) {
+        setStatus('success', '✅ 检测完毕：该文件已完全离线化，无需补全 CDN。');
+        return;
+      }
+
+      const total = sMatches.length + lMatches.length;
+      setStatus('info', '⏳ 正在后台拉取并内嵌 ' + total + ' 个外部 CDN 资源...');
+
+      let resultHtml = rawHtml;
+      const fetchedList = [];
+      const failedList = [];
+
+      for (let i = 0; i < sMatches.length; i++) {
+        const item = sMatches[i];
+        let url = item.url.trim();
+        if (url.indexOf('//') === 0) url = 'https:' + url;
+
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          let code = await res.text();
+
+          const safeRegex = new RegExp(CLOSE_S, 'gi');
+          code = code.replace(safeRegex, SAFE_CLOSE_S);
+
+          const inlined = OPEN_S + '\n' + code + '\n' + CLOSE_S;
+          // 使用函数作为第二参数，防止源码中的 $& 或 $' 触发正则特殊替换Bug
+          resultHtml = resultHtml.replace(item.full, function() {
+            return inlined;
+          });
+          fetchedList.push('[JS] ' + url);
+        } catch (err) {
+          failedList.push('[JS 失败] ' + url + ' (' + err.message + ')');
+        }
+      }
+
+      for (let j = 0; j < lMatches.length; j++) {
+        const item = lMatches[j];
+        let url = item.url.trim();
+        if (url.indexOf('//') === 0) url = 'https:' + url;
+
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const css = await res.text();
+
+          const inlinedCss = OPEN_ST + '\n' + css + '\n' + CLOSE_ST;
+          resultHtml = resultHtml.replace(item.full, function() {
+            return inlinedCss;
+          });
+          fetchedList.push('[CSS] ' + url);
+        } catch (err) {
+          failedList.push('[CSS 失败] ' + url + ' (' + err.message + ')');
+        }
+      }
+
+      processedHtml = resultHtml;
+
+      if (failedList.length === 0) {
+        setStatus('success', '🎉 离线化成功！已内置 ' + fetchedList.length + ' 个 CDN 资源：', fetchedList);
+      } else {
+        setStatus('warning', '⚠️ 离线化完成，但有 ' + failedList.length + ' 个资源失败：', fetchedList.concat(failedList));
+      }
+
+      btnGroup.style.display = 'flex';
+    }
+
+    btnCopy.addEventListener('click', function() {
+      if (!processedHtml) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(processedHtml).then(function() {
+          showToast('📋 完整离线代码已复制到剪贴板！');
+        }).catch(function() {
+          copyFallback(processedHtml);
+        });
+      } else {
+        copyFallback(processedHtml);
+      }
+    });
+
+    function copyFallback(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('📋 完整离线代码已复制到剪贴板！');
+      } catch (err) {
+        showToast('复制受限，请点击右侧下载按钮');
+      }
+      document.body.removeChild(ta);
+    }
+
+    btnDownload.addEventListener('click', function() {
+      if (!processedHtml) return;
+      const blob = new Blob([processedHtml], { type: 'text/html;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = currentFileName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast('💾 纯离线 HTML 已开始下载！');
+    });
+  </script>
+</body>
+</html>
